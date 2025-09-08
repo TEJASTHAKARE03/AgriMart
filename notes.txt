@@ -1,0 +1,170 @@
+### JPA and Lombok Annotations Explained
+
+Here is a breakdown of the annotations we discussed: `fetch`, `cascade`, and `@ToString.Exclude`.
+
+---
+
+### 1. `fetch = FetchType.LAZY`
+
+This attribute controls **how and when** related data is loaded from the database.
+
+*   **`FetchType.LAZY` (Lazy Loading):** This is the most common and performance-friendly approach. It means that when you load an entity (like a `User`), its associated entities (like `Seller` or `Cart`) are **not loaded at the same time**. They are only fetched from the database the first time you try to access them (e.g., by calling `user.getSeller()`). This avoids loading a lot of data into memory that you might not need.
+
+*   **`FetchType.EAGER` (Eager Loading):** This is the opposite. It would load the related entities from the database at the very same moment the parent entity is loaded. This can be less efficient, especially if the related entity is large or not always required, as it can lead to slower initial queries and more memory usage.
+
+**In your code:** `fetch = FetchType.LAZY` on a field means the data for that field will only be queried from the database if and when you explicitly try to access it.
+
+---
+
+### 2. `cascade = CascadeType.ALL`
+
+This attribute defines how persistence operations (like saving, updating, or deleting) on a "parent" entity should be **propagated** to its related "child" entities.
+
+*   **`CascadeType.ALL`:** This is a shortcut for all cascade operations. It means that if you perform an action on the parent entity, the same action will be automatically applied to the associated child entity.
+
+    *   **Persist:** If you save a new `User`, its associated `Cart` will also be saved.
+    *   **Merge:** If you update a User's details, changes to its `Cart` will be updated too.
+    *   **Remove:** If you delete a `User`, its associated `Cart` will be deleted as well.
+    *   **And others (`Refresh`, `Detach`).**
+
+**In your code:** `cascade = CascadeType.ALL` creates a strong ownership link. The lifecycle of the child entity (e.g., `Cart`) is managed through its parent `User` entity.
+
+---
+
+### 3. `@ToString.Exclude` (from Lombok)
+
+This is a Lombok annotation, not a JPA one. It is used to prevent infinite loops when generating `toString()` methods.
+
+*   **The Problem:** Your classes have **bidirectional relationships** (e.g., `User` refers to `Seller`, and `Seller` refers back to `User`). If Lombok's `@ToString` annotation tries to generate a `toString()` method for both, it will create an infinite loop:
+    1.  `user.toString()` tries to print the `seller` field.
+    2.  This calls `seller.toString()`, which tries to print its `user` field.
+    3.  This calls `user.toString()` again... leading to a `StackOverflowError`.
+
+*   **The Solution:** `@ToString.Exclude` tells Lombok to **skip this specific field** when it generates the `toString()` method. This breaks the infinite loop. It's standard practice to use this annotation on the "back-reference" side of a bidirectional relationship.
+
+---
+
+### 4. What `@ToString` Does (It Doesn't Print)
+
+The `@ToString` annotation itself **does not print anything** to the console.
+
+Instead, it **automatically writes a `toString()` method for your class** at compile time. It's a code generator.
+
+*   **Without `@ToString`**, printing an object gives you something unhelpful like: `com.example.demo.model.User@1f32e575`.
+*   **With `@ToString`**, Lombok generates a method that returns a meaningful string representation of your object's data.
+
+This generated `toString()` method is called automatically when you do something like `System.out.println(myUserObject)`. The output you see on the console is the result of that method.
+
+---
+
+### 5. Why `fetch = FetchType.LAZY` is Only on Some Fields (Default Fetch Strategies)
+
+You astutely observed that `fetch = FetchType.LAZY` is only explicitly used on the `@OneToOne` relationships (`seller`, `admin`, `cart`) and not on the `@OneToMany` relationships (`orders`, `reviews`).
+
+This is because of **JPA's default fetching strategies**:
+
+*   **`@OneToOne` and `@ManyToOne`:** The default fetch type is **`EAGER`**.
+    *   This means if you don't specify `FetchType.LAZY`, JPA will automatically load these related objects every time you load the parent object. This is often inefficient.
+    *   Therefore, it is a best practice to **explicitly override the default** by adding `fetch = FetchType.LAZY` to these annotations.
+
+*   **`@OneToMany` and `@ManyToMany`:** The default fetch type is **`LAZY`**.
+    *   JPA assumes that collections of related entities can be very large, so it defaults to lazy loading them to avoid performance problems.
+    *   Since the default is already `LAZY`, there is **no need to write it explicitly**.
+
+**In short:** The code is overriding the default `EAGER` behavior for `@OneToOne` relationships to make them `LAZY` for better performance, while simply relying on the sensible default `LAZY` behavior for `@OneToMany` relationships.
+
+---
+
+### 6. `orphanRemoval = true`
+
+This attribute is another powerful tool for managing the lifecycle of child entities. It tells the persistence provider (like Hibernate) to automatically delete a child entity when it is no longer referenced by its parent.
+
+An entity becomes an "orphan" when the relationship to its parent is broken.
+
+**How it works:**
+
+*   **For `@OneToOne` (e.g., `User` and `Cart`):**
+    *   In `User.java`, you have: `@OneToOne(mappedBy = "user", ..., orphanRemoval = true) private Cart cart;`
+    *   If you break the link from the parent side by setting the reference to `null`, the child is orphaned and will be deleted from the database.
+    *   **Example:**
+        ```java
+        User user = userRepository.findById(1).get();
+        user.setCart(null); // This breaks the relationship
+        userRepository.save(user); // When this transaction commits, the Cart that was associated with the user will be deleted from the database.
+        ```
+
+*   **For `@OneToMany` (e.g., `Cart` and `CartItems`):**
+    *   In `Cart.java`, you have: `@OneToMany(mappedBy = "cart", ..., orphanRemoval = true) private List<CartItems> cartItems;`
+    *   If you remove a `CartItems` entity from the `cartItems` list in the `Cart` entity, that `CartItems` entity becomes an orphan and will be deleted from the database upon saving the `Cart`.
+    *   **Example:**
+        ```java
+        Cart cart = cartRepository.findById(1).get();
+        cart.getCartItems().remove(0); // Remove the first item from the list
+        cartRepository.save(cart); // When this transaction commits, the removed CartItems object is deleted from the database.
+        ```
+
+---
+
+#### **`orphanRemoval = true` vs. `cascade = CascadeType.REMOVE`**
+
+This is a common point of confusion, but the distinction is important.
+
+*   **`cascade = CascadeType.REMOVE`**: The child entity is deleted **only when the parent entity is deleted**.
+    *   If you delete a `User`, its associated `Cart` is also deleted.
+    *   However, if you just set `user.setCart(null)`, the `Cart` will **remain** in the database, but its `user_id` foreign key will be set to `null` (if the database schema allows it). The `Cart` is not deleted because the `User` was not deleted.
+
+*   **`orphanRemoval = true`**: The child entity is deleted when it's **disassociated** from the parent, even if the parent itself is not deleted.
+    *   If you delete a `User`, its `Cart` is deleted (this behavior overlaps with `CascadeType.REMOVE`).
+    *   Crucially, if you just set `user.setCart(null)`, the `Cart` is **also deleted**. It has been "orphaned."
+
+**When to use which?**
+
+*   Use `orphanRemoval = true` when the child entity's lifecycle is strictly and exclusively bound to the parent. A `CartItem` cannot exist without a `Cart`. A `Cart` should not exist without a `User`.
+*   Use `cascade = CascadeType.REMOVE` when you only want to propagate the delete operation, but the child might be able to exist independently or be reassigned to another parent.
+
+In your code, using both `CascadeType.ALL` (which includes `REMOVE`) and `orphanRemoval = true` is common and perfectly valid. It provides the most complete form of lifecycle management for tightly-coupled parent-child relationships.
+
+---
+
+### 7. Dissecting the `@JoinColumn` Annotation Block
+
+This block of code, found in entities like `Seller` and `Admin`, defines the **owning side** of a one-to-one relationship. It is the bridge between your Java object and the database foreign key.
+
+Let's dissect the code from `Seller.java`:
+
+```java
+@OneToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "user_id", nullable = false, unique = true)
+@ToString.Exclude
+private User user;
+```
+
+*   **`@OneToOne(...)`**: This defines the relationship's cardinality, stating that one `Seller` corresponds to exactly one `User`.
+
+*   **`@JoinColumn(...)`**: This is the most critical annotation for the owning side. It specifies the **foreign key column** in the current entity's table (the `seller` table).
+    *   **`name = "user_id"`**: Tells JPA that the foreign key column in the `seller` table is named `user_id`.
+    *   **`nullable = false`**: Creates a `NOT NULL` constraint at the database level. This ensures a `Seller` cannot exist without being linked to a `User`.
+    *   **`unique = true`**: Creates a `UNIQUE` constraint on the `user_id` column. This is essential for a true one-to-one relationship, as it prevents two different sellers from being linked to the same user.
+
+*   **`@ToString.Exclude`**: The Lombok annotation that prevents infinite loops in `toString()` calls within a bidirectional relationship.
+
+*   **`private User user;`**: The Java field that holds the related `User` object in your application code.
+
+---
+
+### 8. The Owning vs. Inverse Side of a Relationship
+
+In a bidirectional relationship, JPA needs to know which entity is responsible for managing the relationship in the database. This is determined by the "owning" side.
+
+*   **The Owning Side (`Seller`)**: This is the entity that contains the foreign key. It defines the relationship mapping.
+    *   **The Key Indicator**: The presence of the **`@JoinColumn`** annotation.
+    *   In the `User-Seller` relationship, **`Seller` is the owning side**. Its table (`seller`) contains the `user_id` column.
+
+*   **The Inverse Side (`User`)**: This is the entity that does **not** manage the relationship. It simply refers to the mapping defined by the owner.
+    *   **The Key Indicator**: The presence of the **`mappedBy`** attribute in the `@OneToOne` annotation (e.g., `@OneToOne(mappedBy = "user", ...)`).
+    *   The `mappedBy = "user"` in the `User` class tells JPA: "I am the inverse side. To find the details of this relationship, go look at the `user` field in the `Seller` class."
+
+#### **Simple Rule to Remember:**
+
+> The entity with `@JoinColumn` is the **owner**.
+> The entity with `mappedBy` is the **inverse side**.
