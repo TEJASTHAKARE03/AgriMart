@@ -1,6 +1,7 @@
 package com.example.demo.controller;
 
-import com.example.demo.model.Product;
+import com.example.demo.dto.ProductCreateRequestDTO;
+import com.example.demo.dto.ProductResponseDTO;
 import com.example.demo.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -22,14 +23,14 @@ public class ProductController {
 
     /**
      * Endpoint to create a new product.
-     * The seller ID must be passed as a request parameter.
+     * The seller ID is now part of the request body DTO.
      * HTTP Method: POST
-     * URL: /api/products?sellerId={id}
+     * URL: /api/products
      */
     @PostMapping
-    public ResponseEntity<?> createProduct(@RequestBody Product product, @RequestParam Integer sellerId) {
+    public ResponseEntity<?> createProduct(@RequestBody ProductCreateRequestDTO requestDTO) {
         try {
-            Product createdProduct = productService.createProduct(product, sellerId);
+            ProductResponseDTO createdProduct = productService.createProduct(requestDTO);
             return new ResponseEntity<>(createdProduct, HttpStatus.CREATED);
         } catch (IllegalStateException e) {
             return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
@@ -44,7 +45,7 @@ public class ProductController {
      * URL (filtered): /api/products?name=Laptop
      */
     @GetMapping
-    public List<Product> getAllProducts(
+    public List<ProductResponseDTO> getAllProducts(
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String name) {
         if (category != null) {
@@ -62,9 +63,9 @@ public class ProductController {
      * URL: /api/products/{id}
      */
     @GetMapping("/{id}")
-    public ResponseEntity<Product> findProductById(@PathVariable Integer id) {
+    public ResponseEntity<ProductResponseDTO> findProductById(@PathVariable Integer id) {
         return productService.findProductById(id)
-                .map(product -> new ResponseEntity<>(product, HttpStatus.OK))
+                .map(productDTO -> new ResponseEntity<>(productDTO, HttpStatus.OK))
                 .orElse(new ResponseEntity<>(HttpStatus.NOT_FOUND));
     }
 }

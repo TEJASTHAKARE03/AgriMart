@@ -1,5 +1,8 @@
 package com.example.demo.service;
 
+import com.example.demo.dto.SellerCreateRequestDTO;
+import com.example.demo.dto.SellerResponseDTO;
+import com.example.demo.dto.SellerUpdateDTO;
 import com.example.demo.model.Seller;
 import com.example.demo.model.User;
 import com.example.demo.repository.SellerRepository;
@@ -22,45 +25,57 @@ public class SellerService {
         this.userRepository = userRepository;
     }
 
-    /**
-     * Allows a regular user to register as a seller.
-     */
     @Transactional
-    public Seller createSellerProfile(Seller seller, Integer userId) {
-        // 1. Find the user who is becoming a seller.
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalStateException("User with ID " + userId + " not found."));
+    public SellerResponseDTO createSellerProfile(SellerCreateRequestDTO requestDTO) {
+        User user = userRepository.findById(requestDTO.getUserId())
+                .orElseThrow(() -> new IllegalStateException("User with ID " + requestDTO.getUserId() + " not found."));
 
-        // 2. BUSINESS RULE: Check if this user already has a seller profile.
         if (user.getSeller() != null) {
             throw new IllegalStateException("This user is already registered as a seller.");
         }
 
-        // 3. Link the new Seller profile to the User.
-        seller.setUser(user);
+        Seller newSeller = new Seller();
+        newSeller.setUser(user);
+        newSeller.setShopName(requestDTO.getShopName());
+        newSeller.setGstNumber(requestDTO.getGstNumber());
 
-        // 4. Save the new seller profile.
-        return sellerRepository.save(seller);
+        Seller savedSeller = sellerRepository.save(newSeller);
+        return convertToResponseDTO(savedSeller);
     }
 
-    /**
-     * Finds a seller profile using the associated user's ID.
-     */
-    public Optional<Seller> getSellerProfileByUserId(Integer userId) {
-        return userRepository.findById(userId).map(User::getSeller);
+    public Optional<SellerResponseDTO> getSellerProfileByUserId(Integer userId) {
+        return userRepository.findById(userId)
+                .map(User::getSeller)
+                .map(this::convertToResponseDTO);
     }
 
-    /**
-     * Updates a seller's profile information.
-     */
     @Transactional
-    public Seller updateSellerProfile(Integer sellerId, Seller updatedInfo) {
+    public SellerResponseDTO updateSellerProfile(Integer sellerId, SellerUpdateDTO updateDTO) {
         Seller existingSeller = sellerRepository.findById(sellerId)
                 .orElseThrow(() -> new IllegalStateException("Seller profile with ID " + sellerId + " not found."));
 
-        existingSeller.setShopName(updatedInfo.getShopName());
-        existingSeller.setGstNumber(updatedInfo.getGstNumber());
+        existingSeller.setShopName(updateDTO.getShopName());
+        existingSeller.setGstNumber(updateDTO.getGstNumber());
 
-        return sellerRepository.save(existingSeller);
+        Seller updatedSeller = sellerRepository.save(existingSeller);
+        return convertToResponseDTO(updatedSeller);
+    }
+
+    private SellerResponseDTO convertToResponseDTO(Seller seller) {
+        if (seller == null) {
+            return null;
+        }
+        SellerResponseDTO dto = new SellerResponseDTO();
+        dto.setSellerId(seller.getSellerId());
+        dto.setShopName(seller.getShopName());
+        dto.setRating(seller.getRating());
+        dto.setMemberSince(seller.getCreatedAt());
+
+        if (seller.getUser() != null) {
+            dto.setUserId(seller.getUser().getUserId());
+            dto.setUserName(seller.getUser().getName());
+        }
+
+        return dto;
     }
 }

@@ -1,5 +1,7 @@
 package com.example.demo.service;
 
+import com.example.demo.dto.ProductCreateRequestDTO;
+import com.example.demo.dto.ProductResponseDTO;
 import com.example.demo.model.Product;
 import com.example.demo.model.Seller;
 import com.example.demo.repository.ProductRepository;
@@ -10,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class ProductService {
@@ -23,52 +26,60 @@ public class ProductService {
         this.sellerRepository = sellerRepository;
     }
 
-    /**
-     * Business logic to create a new product and associate it with a seller.
-     *
-     * @param product the product to be created
-     * @param sellerId the ID of the seller who owns this product
-     * @return the newly created and saved Product
-     * @throws IllegalStateException if the seller does not exist
-     */
     @Transactional
-    public Product createProduct(Product product, Integer sellerId) {
-        // 1. BUSINESS RULE: A product must be linked to a valid seller.
-        Seller seller = sellerRepository.findById(sellerId)
-                .orElseThrow(() -> new IllegalStateException("Error: Seller with ID " + sellerId + " not found. Cannot create product."));
+    public ProductResponseDTO createProduct(ProductCreateRequestDTO requestDTO) {
+        Seller seller = sellerRepository.findById(requestDTO.getSellerId())
+                .orElseThrow(() -> new IllegalStateException("Error: Seller with ID " + requestDTO.getSellerId() + " not found. Cannot create product."));
 
-        // 2. BUSINESS LOGIC: Associate the product with its seller.
+        Product product = new Product();
+        product.setName(requestDTO.getName());
+        product.setDescription(requestDTO.getDescription());
+        product.setCategory(requestDTO.getCategory());
+        product.setPrice(requestDTO.getPrice());
+        product.setStock(requestDTO.getStock());
         product.setSeller(seller);
 
-        // 3. DATA ACCESS: Save the new product.
-        return productRepository.save(product);
+        Product savedProduct = productRepository.save(product);
+
+        return convertToResponseDTO(savedProduct);
     }
 
-    /**
-     * Finds a product by its ID.
-     */
-    public Optional<Product> findProductById(Integer id) {
-        return productRepository.findById(id);
+    public Optional<ProductResponseDTO> findProductById(Integer id) {
+        return productRepository.findById(id).map(this::convertToResponseDTO);
     }
 
-    /**
-     * Finds all products in a given category.
-     */
-    public List<Product> findProductsByCategory(String category) {
-        return productRepository.findByCategory(category);
+    public List<ProductResponseDTO> findProductsByCategory(String category) {
+        return productRepository.findByCategory(category).stream()
+                .map(this::convertToResponseDTO)
+                .collect(Collectors.toList());
     }
 
-    /**
-     * Finds products whose names contain the given search term (case-insensitive).
-     */
-    public List<Product> findProductsByName(String name) {
-        return productRepository.findByNameContainingIgnoreCase(name);
+    public List<ProductResponseDTO> findProductsByName(String name) {
+        return productRepository.findByNameContainingIgnoreCase(name).stream()
+                .map(this::convertToResponseDTO)
+                .collect(Collectors.toList());
     }
 
-    /**
-     * Retrieves all products.
-     */
-    public List<Product> findAllProducts() {
-        return productRepository.findAll();
+    public List<ProductResponseDTO> findAllProducts() {
+        return productRepository.findAll().stream()
+                .map(this::convertToResponseDTO)
+                .collect(Collectors.toList());
+    }
+
+    private ProductResponseDTO convertToResponseDTO(Product product) {
+        ProductResponseDTO dto = new ProductResponseDTO();
+        dto.setProductId(product.getProductId());
+        dto.setName(product.getName());
+        dto.setDescription(product.getDescription());
+        dto.setCategory(product.getCategory());
+        dto.setPrice(product.getPrice());
+        dto.setStock(product.getStock());
+
+        if (product.getSeller() != null) {
+            dto.setSellerId(product.getSeller().getSellerId());
+            dto.setSellerShopName(product.getSeller().getShopName());
+        }
+
+        return dto;
     }
 }

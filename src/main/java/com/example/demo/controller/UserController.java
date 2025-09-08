@@ -1,6 +1,9 @@
 package com.example.demo.controller;
 
-import com.example.demo.model.User;
+import com.example.demo.dto.ChangePasswordRequestDTO;
+import com.example.demo.dto.UserRegistrationRequestDTO;
+import com.example.demo.dto.UserResponseDTO;
+import com.example.demo.dto.UserUpdateProfileDTO;
 import com.example.demo.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -8,7 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/users") // Base path for all user-related endpoints
+@RequestMapping("/api/users")
 public class UserController {
 
     private final UserService userService;
@@ -18,35 +21,52 @@ public class UserController {
         this.userService = userService;
     }
 
-    /**
-     * Endpoint to register a new user.
-     * HTTP Method: POST
-     * URL: /api/users/register
-     * Body: JSON representation of the User object
-     */
     @PostMapping("/register")
-    public ResponseEntity<?> registerUser(@RequestBody User user) {
+    public ResponseEntity<?> registerUser(@RequestBody UserRegistrationRequestDTO requestDTO) {
         try {
-            User registeredUser = userService.registerUser(user);
-            // On success, return the created user and an HTTP 201 Created status.
+            UserResponseDTO registeredUser = userService.registerUser(requestDTO);
             return new ResponseEntity<>(registeredUser, HttpStatus.CREATED);
         } catch (IllegalStateException e) {
-            // If the service throws an exception (e.g., email in use), return an HTTP 400 Bad Request status.
             return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
         }
     }
 
+    @GetMapping("/{id}")
+    public ResponseEntity<UserResponseDTO> findUserById(@PathVariable Integer id) {
+        return userService.findUserById(id)
+                .map(userDTO -> new ResponseEntity<>(userDTO, HttpStatus.OK))
+                .orElse(new ResponseEntity<>(HttpStatus.NOT_FOUND));
+    }
+
     /**
-     * Endpoint to find a user by their ID.
-     * HTTP Method: GET
+     * Endpoint to update a user's profile information.
+     * HTTP Method: PUT
      * URL: /api/users/{id}
      */
-    @GetMapping("/{id}")
-    public ResponseEntity<User> findUserById(@PathVariable Integer id) {
-        return userService.findUserById(id)
-                // If found, wrap it in a ResponseEntity with an HTTP 200 OK status.
-                .map(user -> new ResponseEntity<>(user, HttpStatus.OK))
-                // If not found, return an HTTP 404 Not Found status.
-                .orElse(new ResponseEntity<>(HttpStatus.NOT_FOUND));
+    @PutMapping("/{id}")
+    public ResponseEntity<?> updateUserDetails(@PathVariable Integer id, @RequestBody UserUpdateProfileDTO updateDTO) {
+        try {
+            UserResponseDTO updatedUser = userService.updateUserDetails(id, updateDTO);
+            return new ResponseEntity<>(updatedUser, HttpStatus.OK);
+        } catch (IllegalStateException e) {
+            return new ResponseEntity<>(e.getMessage(), HttpStatus.NOT_FOUND);
+        }
+    }
+
+    /**
+     * Endpoint to change a user's password.
+     * HTTP Method: PUT
+     * URL: /api/users/{id}/password
+     */
+    @PutMapping("/{id}/password")
+    public ResponseEntity<?> changeUserPassword(@PathVariable Integer id, @RequestBody ChangePasswordRequestDTO requestDTO) {
+        try {
+            userService.changeUserPassword(id, requestDTO);
+            return ResponseEntity.ok("Password updated successfully.");
+        } catch (IllegalStateException e) {
+            return new ResponseEntity<>(e.getMessage(), HttpStatus.NOT_FOUND);
+        } catch (SecurityException e) {
+            return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
+        }
     }
 }
